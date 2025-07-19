@@ -58,3 +58,99 @@ Readable and production-grade SQL structure with inline documentation.
 🔍 Benchmark recovery by vintage.
 
 💼 Present data-driven insights to collections or credit risk teams.
+
+
+📈 Recovery Curve Analysis by Campus Segment (Factoring Model)
+Author: Antonio Padilla
+Last updated: CURRENT_DATE
+
+Overview
+This SQL script calculates the daily recovery curve for a portfolio of educational institutions under a factoring model. It evaluates the ratio of collections to the expected purchase price (adjusted), segmented by vintage and campus size (S1–S4). The results support credit risk monitoring and performance tracking across different financing segments and geographies.
+
+🔍 Objective
+To produce a segmented recovery curve per day and per campus using:
+
+Purchase price with adjustments (expected recovery)
+
+Actual payments from memberships
+
+Segment thresholds by purchase size
+
+Filters by vintage (202409) and product type (factoring)
+
+📊 Use Cases
+Monitoring early performance of factoring vintages
+
+Comparing recovery performance across segments (S1–S4)
+
+Adapting to different countries (Mexico, Colombia, Ecuador)
+
+Supporting dashboards or alert systems for underperforming cohorts
+
+🧠 Logic Summary
+Segmentation
+Assigns each campus to a segment (S1 to S4) based on the total purchase price, with adjustable thresholds for each country.
+
+Aggregation
+Filters for a specific vintage (202409) and aggregates:
+
+Expected recovery (purchase price)
+
+Total actual recovery (collection)
+
+Payment Mapping
+Matches invoice payments (membership concept) from dim_receipts and dim_invoices with each campus.
+
+Final Join
+Combines expected and actual values to compute:
+
+Curva_Acumulada_AlDia (cumulative recovery to date)
+
+Curva_Acumulada_Diaria (daily updated recovery performance)
+
+🧩 Key Fields
+Field	Description
+segment	Campus grouping by purchase price (S1–S4)
+VPCosecha	Expected recovery (Purchase price adjusted)
+PagadoDia	Total collected amount to date
+Curva_Acumulada_AlDia	Cumulative recovery as of current date
+Curva_Acumulada_Diaria	Ratio of payments to expected value (daily)
+campus_product_type	Should be factoring
+
+🌍 Country Adaptability
+The segmentation logic is easily adaptable:
+
+sql
+Copiar
+Editar
+-- Mexico
+WHEN purchase_price_w_adjustments >= 2,000,000 THEN 'S1'
+-- Colombia
+WHEN purchase_price_w_adjustments >= 424,000,000 THEN 'S1'
+-- Ecuador
+WHEN purchase_price_w_adjustments >= 101,364 THEN 'S1'
+Simply uncomment the relevant CASE block to regionalise the logic.
+
+🛠️ Prerequisites
+This script assumes access to the following tables:
+
+mattiwarehouse.collection.dtm_collection
+
+mattiwarehouse.default.dim_receipts
+
+mattiwarehouse.default.dim_invoices
+
+mattiwarehouse.default.dim_campuses
+
+Ensure date fields (CURRENT_DATE, paid_date, cutoff_date) are properly aligned with your ETL.
+
+✅ Recommended Enhancements
+Parameterise the vintage (202409) for flexibility
+
+Save results to a reporting table
+
+Add visualisation layer (e.g. Power BI, QuickSight)
+
+Track historical curves over time (not just CURRENT_DATE)
+
+
