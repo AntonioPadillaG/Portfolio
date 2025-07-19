@@ -1,0 +1,128 @@
+-- ========================================
+-- Recovery Curve by Purchase Segment (Factoring Model)
+-- Author: Antonio Padilla
+-- Objective: Calculate the cumulative recovery percentage
+--            (amount paid / purchase price), segmented by campus size,
+--            harvest period (vintage), and country.
+-- ========================================
+
+-- This script can be adapted to Colombia or Ecuador by modifying the segment thresholds
+-- and setting the country and vintage filters accordingly.
+
+WITH purchase_segmented AS (
+    SELECT  
+        r.campus_id,
+        r.campus_name,
+        r.country,
+        r.harvesting_period AS vintage,
+        r.purchase_price_w_adjustments,
+        r.total_collection_w_adjustments,
+        r.cutoff_date,
+        r.campus_product_type,
+
+        -- Segmenting campuses based on purchase price thresholds by country
+        CASE
+            WHEN r.country = 'Mexico' THEN
+                CASE
+                    WHEN r.purchase_price_w_adjustments >= 2000000 THEN 'S1'
+                    WHEN r.purchase_price_w_adjustments >= 1000000 THEN 'S2'
+                    WHEN r.purchase_price_w_adjustments >= 500000 THEN 'S3'
+                    ELSE 'S4'
+                END
+            WHEN r.country = 'Colombia' THEN
+                CASE
+                    WHEN r.purchase_price_w_adjustments >= 424000000 THEN 'S1'
+                    WHEN r.purchase_price_w_adjustments >= 212000000 THEN 'S2'
+                    WHEN r.purchase_price_w_adjustments >= 106000000 THEN 'S3'
+                    ELSE 'S4'
+                END
+            WHEN r.country = 'Ecuador' THEN
+                CASE
+                    WHEN r.purchase_price_w_adjustments >= 101364 THEN 'S1'
+                    WHEN r.purchase_price_w_adjustments >= 50682 THEN 'S2'
+                    WHEN r.purchase_price_w_adjustments >= 25340 THEN 'S3'
+                    ELSE 'S4'
+                END
+        END AS segment
+
+    FROM mattiwarehouse.collection.dtm_collection r
+),
+
+principal_data AS (
+    SELECT
+        campus_name,
+        campus_id,
+        vintage,
+        segment,
+        cutoff_date,
+        campus_product_type,
+        SUM(CASE WHEN vintage = '202409' THEN purchase_price_w_adjustments ELSE 0 END) AS purchase_price_cosecha
+    FROM purchase_segmented
+    WHERE vintage >= '202409' AND cutoff_date >= '2024-09-01'
+    GROUP BY campus_name, campus_id, segment, vintage, cutoff_date, campus_product_type
+),
+
+membership_payments AS (
+    SELECT
+        c.campus_id,
+        c.name AS campus_name,
+        COUNT(DISTINCT r.payment_id) AS num_payments,
+        SUM(i.initial_amount) AS initial_amount,
+        SUM(i.amount) AS amount,
+        i.date_period_period AS harvesting_period,
+        i.factoring,
+        c.country
+    FROM mattiwarehouse.default.dim_receipts r
+    JOIN mattiwarehouse.default.dim_campuses c ON c.campus_id = r.campus_id
+    JOIN mattiwarehouse.default.dim_invoices i ON i.invoice_id = r.invoice_id
+    WHERE 
+        r.concept_type IN ('membership')
+        AND i.status = 'successful'
+        AND i.date_period_period = '202409'
+        AND i.factoring IS TRUE
+    GROUP BY c.country, c.campus_id, c.name, i.date_period_period, i.factoring
+),
+
+merged_data AS (
+    SELECT 
+        m.campus_id,
+        m.campus_name,
+        m.num_payments,
+        m.initial_amount,
+        m.amount,
+        m.harvesting_period,
+        m.country,
+        p.vintage,
+        p.segment,
+        p.purchase_price_cosecha,
+        p.cutoff_date,
+        p.campus_product_type
+    FROM membership_payments m
+    LEFT JOIN principal_data p ON m.campus_id = p.campus_id
+),
+
+final_metrics AS (
+    SELECT *,
+        ROUND(purchase_price_cosecha, 2) AS purchase_price_r,
+        ROUND(amount, 2) AS amount_r,
+        ROUND(
+            CASE 
+                WHEN purchase_price_cosecha = 0 THEN 0
+                ELSE COALESCE(amount, 0) / NULLIF(purchase_price_cosecha, 0)
+            END * 100, 2
+        ) AS recovery_curve_pct
+    FROM merged_data
+    WHERE vintage = '202409'
+)
+
+-- Final output: aggregate recovery curve metrics by segment
+SELECT
+    segment,
+    SUM(purchase_price_r) AS total_purchase_price,
+    SUM(amount_r) AS total_amount_paid,
+    AVG(recovery_curve_pct) AS avg_recovery_curve_pct,
+    ROUND(SUM(amount_r) / NULLIF(SUM(purchase_price_r), 0) * 100, 2) AS recovery_curve_pct_total
+FROM final_metrics
+WHERE country = 'Mexico' AND campus_product_type = 'factoring'
+GROUP BY segment
+ORDER BY segment;
