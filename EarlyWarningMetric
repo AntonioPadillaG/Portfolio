@@ -1,0 +1,130 @@
+-- =========================================
+-- Early Warning Metric: First Day of Zero Growth (fdcd_cero)
+-- Author: Antonio Padilla
+-- Purpose: Identify the first day post-harvest where collection growth stalls
+--          per campus, grade level, and harvest period
+-- Use case: Early detection of stagnation in collection curves
+--           Useful for credit risk, collection efficiency, and performance alerts
+-- =========================================
+
+WITH pivote AS ( 
+    SELECT 
+        campus_id,
+        campus_name,
+        harvesting_period,
+        days_after_harvest,
+        country,
+        paid_collection_rights_amount, 
+        total_collection_invoice_amount,
+        total_collection_receipt_amount, 
+        factor_amount,
+        total_successful_invoice_amount,
+        purchase_price,
+        pending_surcharges_amount,
+        paid_surcharges_amount,
+        surcharges_amount,
+        general_collection,
+        potential_collection_amount,
+        potential_collection,
+        campus_product_type,
+        grade_level,
+        cutoff_date,
+        monto_asumido,
+        adjustment,
+        total_collection_w_adjustments,
+        purchase_price_w_adjustments,
+        segment_collection,
+        daily_collection_progress_w_adjustments,
+        aggregate_daily_collection_progress
+    FROM mattiwarehouse.collection.dtm_collection
+    WHERE days_after_harvest <> 0 AND harvesting_period >= 202408
+    ORDER BY campus_id, harvesting_period, grade_level, cutoff_date
+),
+
+CreaMarcas AS (
+    SELECT 
+        campus_id,
+        campus_name,
+        country,
+        harvesting_period,
+        grade_level,
+        cutoff_date,
+        days_after_harvest,
+        paid_collection_rights_amount,
+        total_collection_w_adjustments,
+
+        CASE 
+            WHEN cutoff_date::date != LAG(cutoff_date::date) OVER (PARTITION BY campus_id, harvesting_period, grade_level ORDER BY cutoff_date) 
+            THEN (total_collection_w_adjustments - paid_collection_rights_amount)
+            ELSE NULL
+        END AS difference,
+
+        CASE
+            WHEN LAG(paid_collection_rights_amount) OVER (PARTITION BY campus_id, harvesting_period, grade_level ORDER BY cutoff_date) IS NOT NULL 
+            THEN ROUND(((paid_collection_rights_amount - LAG(paid_collection_rights_amount) OVER (PARTITION BY campus_id, harvesting_period, grade_level ORDER BY cutoff_date)) 
+                        / LAG(paid_collection_rights_amount) OVER (PARTITION BY campus_id, harvesting_period, grade_level ORDER BY cutoff_date)) * 100, 2)
+            ELSE NULL
+        END AS variation,
+
+        CASE
+            WHEN ABS(ROUND(((paid_collection_rights_amount - LAG(paid_collection_rights_amount) OVER (PARTITION BY campus_id, harvesting_period, grade_level ORDER BY cutoff_date)) 
+                        / LAG(paid_collection_rights_amount) OVER (PARTITION BY campus_id, harvesting_period, grade_level ORDER BY cutoff_date)) * 100, 2)) >= 25
+            THEN 'Var>=25'
+            ELSE NULL
+        END AS large_variation_flag
+
+    FROM 
+        pivote
+),
+
+first_zero_growth AS (
+    SELECT *,
+        ROW_NUMBER() OVER (PARTITION BY campus_id, harvesting_period ORDER BY cutoff_date) AS rn
+    FROM CreaMarcas
+    WHERE difference = 0 AND large_variation_flag IS NULL
+),
+
+filtered_days AS (
+    SELECT 
+        campus_id,
+        campus_name,
+        country,
+        harvesting_period,
+        grade_level,
+        cutoff_date,
+        days_after_harvest,
+        paid_collection_rights_amount,
+        total_collection_w_adjustments,
+        difference,
+        variation,
+        large_variation_flag,
+        CASE 
+            WHEN rn = 1 THEN days_after_harvest
+            ELSE NULL
+        END AS first_day_zero_growth
+    FROM 
+        first_zero_growth
+)
+
+SELECT 
+    campus_id,
+    campus_name,
+    country,
+    grade_level,
+    harvesting_period,
+    ROUND(AVG(first_day_zero_growth), 0) AS avg_first_day_zero_growth
+FROM 
+    filtered_days
+WHERE harvesting_period >= 202408
+GROUP BY 
+    campus_id,
+    campus_name,
+    country,
+    grade_level,
+    harvesting_period   
+ORDER BY 
+    campus_id,
+    campus_name,
+    country,
+    grade_level,
+    harvesting_period;
