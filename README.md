@@ -153,4 +153,53 @@ Add visualisation layer (e.g. Power BI, QuickSight)
 
 Track historical curves over time (not just CURRENT_DATE)
 
+# Recovery Curve Analysis: Early Warning Metric
+
+## Overview
+
+This SQL script identifies the **first day of zero growth** in collections after the start of a harvesting period, segmented by `campus`, `grade level`, and `harvesting_period`. This metric can be used as an **early warning indicator** for stagnation in collection performance, potentially highlighting campuses or periods at risk of underperformance.
+
+## Purpose
+
+📌 **Goal:** Detect when the collection curve flattens out, helping to trigger alerts for intervention or closer monitoring.
+
+🎯 **Use Cases:**
+- Credit risk early warning systems
+- Collection team performance tracking
+- Financial health monitoring of educational institutions
+- Operational dashboards and time-series KPIs
+
+## Methodology
+
+1. **Base Table:** Uses `mattiwarehouse.collection.dtm_collection`, filtered for active post-harvest days and harvesting periods from August 2024 onward.
+2. **Daily Growth Logic:** 
+   - Calculates variation in `paid_collection_rights_amount` vs. prior day.
+   - Flags large variations (≥ 25%) to exclude days with abnormal volatility.
+   - Identifies the **first day** where the difference between adjusted total collections and paid collections is zero and not affected by volatility.
+3. **Output:** 
+   - Average of the first day of zero growth (`avg_first_day_zero_growth`) per campus and grade level.
+   - Segmented output suitable for aggregation by product type or geography.
+
+## Output Columns
+
+| Column                     | Description                                                 |
+|----------------------------|-------------------------------------------------------------|
+| `campus_id`               | Unique ID for the campus                                    |
+| `campus_name`             | Name of the campus                                          |
+| `country`                 | Country of operation                                        |
+| `grade_level`             | Educational level (e.g. primary, secondary)                 |
+| `harvesting_period`      | Period of collection grouping (vintage)                     |
+| `avg_first_day_zero_growth` | Avg. day after harvest when collection growth stopped       |
+
+## Notes
+
+- Designed with PostgreSQL window functions and CTEs.
+- Can be integrated into business intelligence tools or embedded in monitoring systems.
+- Modular structure allows easy adaptation for different country-specific thresholds or business rules.
+
+
+
+
+
+
 
