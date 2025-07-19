@@ -197,6 +197,53 @@ This SQL script identifies the **first day of zero growth** in collections after
 - Can be integrated into business intelligence tools or embedded in monitoring systems.
 - Modular structure allows easy adaptation for different country-specific thresholds or business rules.
 
+# Recovery Curve Analysis: First Day of Zero Growth
+
+## Overview
+
+This SQL script calculates the **First Day of Zero Growth (FDZG)** in collection performance across educational campuses. It is designed as an **early warning signal** to detect when a campus' collections stagnate after the harvesting period begins. This metric is useful for credit risk analysts, collection teams, and portfolio managers.
+
+## Objective
+
+Identify the **first day after harvest** (`days_after_harvest`) when a campus shows **no increase in adjusted collections**, while also **excluding noise** from high-variation days (e.g., >25% jump). The resulting average FDZG per `campus_id`, `grade_level`, and `harvesting_period` gives a comparable metric across cohorts and institutions.
+
+## Methodology
+
+The process involves the following steps:
+
+1. **Source and Filter Data**  
+   Extract collection metrics from `dtm_collection` where `days_after_harvest <> 0` and `harvesting_period >= 202408`.
+
+2. **Calculate Growth Flags**
+   - Compute the day-over-day growth in `paid_collection_rights_amount`.
+   - Flag abnormal jumps (absolute variation ≥ 25%) to reduce noise.
+   - Calculate the difference between `total_collection_w_adjustments` and `paid_collection_rights_amount`.
+
+3. **Identify First Day of Zero Growth**
+   - Filter days where `difference = 0` and no large variation is flagged.
+   - Select the **first occurrence** for each `campus_id` and `harvesting_period`.
+
+4. **Aggregate Results**
+   - Compute the **average FDZG** by `campus`, `grade_level`, and `harvesting_period`.
+
+## Output
+
+| Column Name               | Description                                           |
+|--------------------------|-------------------------------------------------------|
+| campus_id                | Unique identifier for the campus                      |
+| campus_name              | Name of the campus                                    |
+| country                  | Country (e.g. Mexico)                                 |
+| grade_level              | Educational grade level                               |
+| harvesting_period        | Cohort or period identifier                           |
+| avg_first_day_zero_growth| Average day post-harvest when collection stagnated    |
+
+## Use Cases
+
+- **Portfolio Monitoring**: Detect early signs of underperforming campuses.
+- **Risk Segmentation**: Compare cohort performance by grade or segment.
+- **Operational Efficiency**: Flag campuses requiring early collection actions.
+
+
 
 
 
